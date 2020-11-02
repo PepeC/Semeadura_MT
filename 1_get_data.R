@@ -12,4 +12,5 @@ library(nlme)
 library(broom)
 
 #Import sowing dates
-semeadura_mt <- read_csv("./S204_Semeadura_v3.csv")
+semeadura_mt <- read_csv("./S204_Semeadura_v4.csv") %>%
+  filter(!is.na(crop))

@@ -16,9 +16,12 @@ semeadura_mt_w <- semeadura_mt %>%
          week = week(date), 
          doy = yday(date)) %>%
   group_by(crop, season, macroregion) %>%
+  #Now, create a starting soy date. I took the floor of the earliest month in
+  #the dataset, except for soy, where I used the start of the soy-free period in MT (9/16)
   mutate(min_year = min(year), 
          sow_start = ymd(paste(min_year, ifelse(crop == "cotton", "12",
-                                                ifelse(crop == "corn", "01", "09")), "01", sep = "-"))) %>%
+                                         ifelse(crop == "corn", "01", "09")), 
+                               ifelse(crop == "soy", "16", "1"), sep = "-"))) %>%
   ungroup() %>%
   mutate(doy_c = ifelse(year>min_year, doy + (365-yday(sow_start)), doy - yday(sow_start))) 
 
@@ -56,28 +59,62 @@ model_test <- gnls(val ~ SSlogis(doy_c, Asym, xmid, scal), model_sem)
 #Now try
 model_sem_nest <- semeadura_mt_w %>%
   group_by(crop, macroregion, season) %>%
-nest()
+  filter(!season == "20/21") %>% #filter out this season until data is complete
+nest() 
+
 #Now run with do-catch
 model_sem2 <- semeadura_mt_w %>%
   group_by(crop, macroregion, season) %>%
   do( model = tryCatch(nlsLM(val ~ Asym/(1 + exp((xmid - doy_c)/scal)), 
                              start = list( Asym = 102, xmid = 53, scal = 8),
-                             lower = c(Asym = 99, xmid = 2, scal = -20), 
-                             upper = c(Asym = 105, xmid = 70, scal = 20), 
-                             control= c(maxiter=100),
-                             data=.)))  
+                             lower = c(Asym = 99, xmid = 2, scal = 2), 
+                             upper = c(Asym = 101, xmid = 70, scal = 20), 
+                             control = c(maxiter = 100),
+                             na.action = na.exclude,
+                             data = .)))  
 
+#Plot model results for last 
 augment(model_sem2, model) %>%
-  filter(macroregion == "CentroSul" & crop == "corn") %>%
-  ggplot(aes(doy_c, val)) + geom_point() + geom_line(aes(doy_c, .fitted)) + facet_wrap(~season)
+  filter(crop == "soy") %>%
+  filter(season == "17/18" | season == "18/19" | season == "19/20" | season == "20/21") %>%
+  ggplot(aes(doy_c, val)) +
+  geom_point(aes(colour = season), shape = 1) + 
+  geom_line(aes(doy_c, .fitted, colour = season)) + 
+  xlab("Days after September 16th") + ylab("Sowing progress (%)") +
+  theme_minimal() +
+  facet_wrap(~macroregion) + 
+  labs(
+    title = "Soy sowing pace in Mato Grosso (2017/18-2020/21)",
+    #subtitle = "Two seaters (sports cars) are an exception because of their light weight",
+    caption = "Data from IMEA (http://www.imea.com.br/imea-site/relatorios-mercado)"
+  )
+  
 
+#Now, let's take a look at the parameters. Is there a relationship between
+# the time 50% of soy sowings are complete and the time it takes after  
 
-tidy(model_sem2, model) %>%
+model_sem2 %>%
+  filter(!season=="20/21") %>% #remove this season from analyses
+  tidy(model) %>%
   filter(term == "xmid") %>%
   select(crop:std.error) %>%
   pivot_wider(names_from = c(crop,term), values_from = c(estimate, std.error)) %>%
-  ggplot(aes(estimate_soy_xmid,estimate_corn_xmid)) + geom_point(aes(colour = season)) +
-  facet_wrap(~macroregion) + theme_bw()
+  ggplot(aes(estimate_soy_xmid,estimate_corn_xmid)) + 
+  geom_point(size = 1.1) +
+  geom_crossbar(aes(ymin = estimate_corn_xmid - 2*std.error_corn_xmid, 
+                      ymax = estimate_corn_xmid + 2*std.error_corn_xmid, 
+                      colour = season), shape = 21) +
+  geom_crossbar(aes(xmin = estimate_soy_xmid - 2*std.error_soy_xmid, 
+                      xmax = estimate_soy_xmid + 2*std.error_soy_xmid, 
+                      colour = season), shape = 21) +
+  xlab("Days to reach 50% soy sowings") + ylab("Days to reach 50% corn sowings") +
+  facet_wrap(~macroregion) + 
+  theme_bw() +
+  labs(
+    title = "Relationship between timing of the 50% sown mark is reached between soy and corn in Mato Grosso",
+    subtitle = "Soybean is estimated at days since 16 September, while for corn it is days since 01 January",
+    caption = "Data from IMEA (http://www.imea.com.br/imea-site/relatorios-mercado)"
+  )
   
 #Define this function to find the days after sowing related to any % completion
 findInt <- function(model, value) {
