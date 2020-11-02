@@ -152,19 +152,29 @@ model_sem_4 <- model_sem2 %>%
   ggplot(aes(root_75_soy_xmid, estimate_corn_xmid)) + geom_point(aes(colour = season)) +
   facet_wrap(~macroregion) + theme_bw()
 
-#Now do a quick regression just to get an idea
+# Now do a quick regression just to get an idea. Best here is to do a regression 
+# with errors in variables (e.g. Deming), and normalize/center vars
 
-  model_sem_4b <-  model_sem_4 %>% filter(!macroregion == "Mato Grosso")
-  
+#Filter to take out the whole state as a test
+model_sem_4b <-  model_sem_4 %>% filter(!macroregion == "Mato Grosso")
+
+#simple linear model with additive soy pace var and macroregion fixed effects
 model_lm_75 <- lm(estimate_corn_xmid ~ macroregion + estimate_soy_xmid, data = model_sem_4b)
 
+#take a look: Not terrible, but will certainly be improve by adding weather variables
+#from December-Feb, especially rainfall and temperature (in that order).
+#parameters here suggest that for each 10 day delay in reaching 50% sowing
+tidy(model_lm_75)
 glance(model_lm_75)
 
+#Plot regression results with approx. 95% conf interval
 augment(model_lm_75, newdata = model_sem_4b) %>%
   ggplot(aes(estimate_soy_xmid, estimate_corn_xmid)) + 
   geom_point(aes(colour = season)) +
   geom_line(aes(estimate_soy_xmid, .fitted)) +
-  geom_ribbon(aes(ymin=.fitted - 2*.se.fit, ymax=.fitted + 2*.se.fit), linetype=2, alpha=0.5) +
+  geom_ribbon(aes(ymin = .fitted - 2*.se.fit, 
+                  ymax = .fitted + 2*.se.fit), 
+              linetype = 2, alpha = 0.5) +
   facet_wrap(~macroregion) + theme_bw()
 
   
