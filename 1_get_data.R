@@ -14,3 +14,23 @@ library(broom)
 #Import sowing dates
 semeadura_mt <- read_csv("./S204_Semeadura_v4.csv") %>%
   filter(!is.na(crop))
+
+#Bring in monthly weather data for MT
+bra_month_mt <- read_csv("bra_month.csv") %>%
+  filter(grepl("MT", geounit)) %>%
+  select(geounit, prev_year, year, contains("dec"), contains("jan") , contains("feb"))
+
+#Bring in daily weather data for MT
+bra_daily_mt <- read_csv("bra_daily_mt.csv") %>%
+  filter(vmnth == "Jan" | vmnth == "Dec" | vmnth == "Feb") %>%
+  filter(vdoy > 354 | vdoy < 55) %>%
+  mutate(vyear = ifelse(vmnth == "Dec", vyear + 1, vyear),
+         raind = ifelse(prcp > 0.5, 1, 0)) %>% # create a rule for how many days it rains
+  group_by(geounit, vyear) %>%
+  summarise(.groups = "keep",
+    sum_prcp = sum(prcp),
+    sum_rday = sum(raind))
+
+
+
+

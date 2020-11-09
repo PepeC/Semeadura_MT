@@ -9,6 +9,13 @@ source("1_get_data.R")
 semeadura_mt_w <- semeadura_mt %>%
   filter(!crop == "cotton") %>%
   pivot_longer(c(`CentroSul`:`Mato Grosso`), names_to = "macroregion", values_to = "val") %>%
+  #create geounit names to match weather
+  mutate(geounit = ifelse(macroregion == "MédioNorte" | macroregion == "Norte" | 
+                            macroregion == "Noroeste" | macroregion == "Oeste", "BRA.MT.01",
+                              ifelse(macroregion == "Nordeste", "BRA.MT.02",
+                                     ifelse(macroregion == "CentroSul", "BRA.MT.04",
+                                            ifelse(macroregion == "Sudeste", "BRA.MT.03",
+                                                   ifelse(macroregion == "Sudoeste", "BRA.MT.05", NA)))))) %>%
   mutate(val = as.numeric(val), 
          val = val*100,
          year = year(date),
@@ -58,7 +65,7 @@ model_test <- gnls(val ~ SSlogis(doy_c, Asym, xmid, scal), model_sem)
 
 #Now try
 model_sem_nest <- semeadura_mt_w %>%
-  group_by(crop, macroregion, season) %>%
+  group_by(crop, macroregion, geounit, season) %>%
   filter(!season == "20/21") %>% #filter out this season until data is complete
 nest() 
 
@@ -135,9 +142,9 @@ model_sem3 <- left_join(model_sem_nest, model_sem2) %>%
 
 unnest(model_sem3, root_75) 
 
-model_sem_roots<- model_sem3 %>% 
+model_sem_roots <- model_sem3 %>% 
   unnest(root_75) %>%
-  select(crop, season, macroregion, root_75)
+  select(crop, season, geounit, macroregion, root_75)
 
 #Now try plot again, but this time with the 75% completion for each one
 model_sem_4 <- model_sem2 %>%
@@ -145,7 +152,8 @@ model_sem_4 <- model_sem2 %>%
   filter(term == "xmid") %>%
   select(crop:std.error) %>% 
   left_join(model_sem_roots) %>%
-  pivot_wider(names_from = c(crop,term), values_from = c(estimate, std.error, root_75))
+  pivot_wider(names_from = c(crop,term), 
+              values_from = c(estimate, std.error, root_75)) 
   
 #now plot
   model_sem_4 %>%
@@ -156,10 +164,33 @@ model_sem_4 <- model_sem2 %>%
 # with errors in variables (e.g. Deming), and normalize/center vars
 
 #Filter to take out the whole state as a test
-model_sem_4b <-  model_sem_4 %>% filter(!macroregion == "Mato Grosso")
+model_sem_4b <-  model_sem_4 %>% 
+  left_join(distinct(semeadura_mt_w, season, macroregion, geounit, year)) %>%
+  filter(!macroregion == "Mato Grosso") %>%
+  #filter(!season == "20/21") %>%
+  filter(year  == max(year)) %>%
+  left_join(bra_month_mt) %>%
+  group_by(macroregion, season, geounit) %>%
+  mutate(prcp_decjan = (prcp_dec + prcp_jan))
 
 #simple linear model with additive soy pace var and macroregion fixed effects
 model_lm_75 <- lm(estimate_corn_xmid ~ macroregion + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w <- lm(estimate_corn_xmid ~ macroregion + prcp_decjan + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w2 <- lm(estimate_corn_xmid ~ macroregion + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w3 <- lm(estimate_corn_xmid ~ macroregion + tmax_jan*prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w4 <- lm(estimate_corn_xmid ~ macroregion + tmax_jan + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w5 <- lm(estimate_corn_xmid ~ macroregion + prcp_feb + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
 
 #take a look: Not terrible, but will certainly be improve by adding weather variables
 #from December-Feb, especially rainfall and temperature (in that order).
@@ -168,7 +199,7 @@ tidy(model_lm_75)
 glance(model_lm_75)
 
 #Plot regression results with approx. 95% conf interval
-augment(model_lm_75, newdata = model_sem_4b) %>%
+augment(model_lm_75_w2, newdata = model_sem_4b) %>%
   ggplot(aes(estimate_soy_xmid, estimate_corn_xmid)) + 
   geom_point(aes(colour = season)) +
   geom_line(aes(estimate_soy_xmid, .fitted)) +
@@ -178,5 +209,13 @@ augment(model_lm_75, newdata = model_sem_4b) %>%
   facet_wrap(~macroregion) + theme_bw()
 
   
-  
-  
+#Plot regression results with approx. 95% conf interval
+augment(model_lm_75_w, newdata = model_sem_4b) %>%
+  distinct() %>%
+  ggplot(aes(year, estimate_corn_xmid)) + 
+  geom_point() +
+  geom_line(aes(year, .fitted)) +
+  geom_ribbon(aes(ymin = .fitted - 2*.se.fit, 
+                  ymax = .fitted + 2*.se.fit), 
+              linetype = 2, alpha = 0.5) +
+  facet_wrap(~macroregion) + theme_bw()
