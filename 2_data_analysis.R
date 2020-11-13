@@ -2,6 +2,8 @@ library(nlme)
 library(broom)
 library(tidyverse)
 library(minpack.lm)
+library(lubridate)
+library(AICcmodavg)
 
 source("1_get_data.R")
 
@@ -18,6 +20,7 @@ semeadura_mt_w <- semeadura_mt %>%
                                                    ifelse(macroregion == "Sudoeste", "BRA.MT.05", NA)))))) %>%
   mutate(val = as.numeric(val), 
          val = val*100,
+         date = as.Date(date),
          year = year(date),
          month = month(date),
          week = week(date), 
@@ -32,7 +35,6 @@ semeadura_mt_w <- semeadura_mt %>%
   ungroup() %>%
   mutate(doy_c = ifelse(year>min_year, doy + (365-yday(sow_start)), doy - yday(sow_start))) 
 
-
 # Take a look at the data: Pace by end of October in MT
 semeadura_mt_w %>%
   filter(crop == "soy") %>%
@@ -41,11 +43,11 @@ semeadura_mt_w %>%
   group_by(year) %>%
   filter(doy == max(doy))
 
-
 #Take a look at the data: Plot of sowing pace by district
 semeadura_mt_w %>%
   filter(crop == "soy") %>%
   filter(week > 10) %>%
+  #filter(season == "12/13") %>%
   ggplot(aes(doy, val)) + 
   geom_line(aes(colour = season)) +
   xlab("Day fo Year") + ylab("Sowing progress (%)") +
@@ -83,7 +85,8 @@ model_sem2 <- semeadura_mt_w %>%
 #Plot model results for last 
 augment(model_sem2, model) %>%
   filter(crop == "soy") %>%
-  filter(season == "17/18" | season == "18/19" | season == "19/20" | season == "20/21") %>%
+  #filter(season == "18/19" | season == "19/20" | season == "20/21") %>%
+  filter(season == "12/13") %>%
   ggplot(aes(doy_c, val)) +
   geom_point(aes(colour = season), shape = 1) + 
   geom_line(aes(doy_c, .fitted, colour = season)) + 
@@ -99,7 +102,6 @@ augment(model_sem2, model) %>%
 
 #Now, let's take a look at the parameters. Is there a relationship between
 # the time 50% of soy sowings are complete and the time it takes after  
-
 model_sem2 %>%
   filter(!season=="20/21") %>% #remove this season from analyses
   tidy(model) %>%
@@ -170,8 +172,16 @@ model_sem_4b <-  model_sem_4 %>%
   #filter(!season == "20/21") %>%
   filter(year  == max(year)) %>%
   left_join(bra_month_mt) %>%
+  left_join(bra_daily_mt) %>%
   group_by(macroregion, season, geounit) %>%
-  mutate(prcp_decjan = (prcp_dec + prcp_jan))
+  mutate(prcp_decjan = (prcp_dec + prcp_jan), 
+         prcp_jan2 = prcp_jan^2)
+
+# look at some diagnostic plots
+model_sem_4b %>%
+  ggplot(aes(prcp_jan2, estimate_corn_xmid)) + 
+  geom_point(aes(colour = year)) + facet_wrap(~macroregion)
+
 
 #simple linear model with additive soy pace var and macroregion fixed effects
 model_lm_75 <- lm(estimate_corn_xmid ~ macroregion + estimate_soy_xmid, data = model_sem_4b)
@@ -191,12 +201,21 @@ model_lm_75_w4 <- lm(estimate_corn_xmid ~ macroregion + tmax_jan + prcp_jan + es
 #simple linear model with additive soy pace var, jan rains and macroregion fixed effects
 model_lm_75_w5 <- lm(estimate_corn_xmid ~ macroregion + prcp_feb + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
 
+#simple linear model with additive soy pace var, jan rains, year/trend and macroregion fixed effects
+model_lm_75_w2b <- lm(estimate_corn_xmid ~ year + macroregion + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains, year/trend and macroregion fixed effects
+model_lm_75_w2c <- lm(estimate_corn_xmid ~ sum_prcp + macroregion +  estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains, year/trend and macroregion fixed effects
+model_lm_75_w2d <- lm(estimate_corn_xmid ~ macroregion + I(prcp_jan^2) + estimate_soy_xmid, data = model_sem_4b)
+
 
 #take a look: Not terrible, but will certainly be improve by adding weather variables
 #from December-Feb, especially rainfall and temperature (in that order).
 #parameters here suggest that for each 10 day delay in reaching 50% sowing
-tidy(model_lm_75)
-glance(model_lm_75)
+tidy(model_lm_75_w2)
+glance(model_lm_75_w2)
 
 #Plot regression results with approx. 95% conf interval
 augment(model_lm_75_w2, newdata = model_sem_4b) %>%
@@ -208,7 +227,6 @@ augment(model_lm_75_w2, newdata = model_sem_4b) %>%
               linetype = 2, alpha = 0.5) +
   facet_wrap(~macroregion) + theme_bw()
 
-  
 #Plot regression results with approx. 95% conf interval
 augment(model_lm_75_w, newdata = model_sem_4b) %>%
   distinct() %>%

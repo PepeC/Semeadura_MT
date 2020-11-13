@@ -29,8 +29,16 @@ bra_daily_mt <- read_csv("bra_daily_mt.csv") %>%
   group_by(geounit, vyear) %>%
   summarise(.groups = "keep",
     sum_prcp = sum(prcp),
-    sum_rday = sum(raind))
+    sum_rday = sum(raind)) %>%
+  rename(year = vyear)
 
+#Bring in ayp, weather, sat imagery data
 
+bra_go_latest_all_mt <- read_csv("bra_yield_latest_all_go_2020_11.csv") %>%
+  filter(grepl("MT", geounit)) %>% #keep only Mato Grosso
+  filter(year > 2006) %>% #keep relevant years
+  filter(crop == "2ndcorn") %>% #only keep 2nd corn data
+  select(year:state, contains("dec"), contains("jan"), contains("feb"), 
+         contains("mar"), contains("apr")) 
 
 
