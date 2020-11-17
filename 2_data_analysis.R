@@ -5,6 +5,7 @@ library(minpack.lm)
 library(lubridate)
 library(AICcmodavg)
 
+#Run get data R code.
 source("1_get_data.R")
 
 #wrangle semeadura data
@@ -13,11 +14,11 @@ semeadura_mt_w <- semeadura_mt %>%
   pivot_longer(c(`CentroSul`:`Mato Grosso`), names_to = "macroregion", values_to = "val") %>%
   #create geounit names to match weather
   mutate(geounit = ifelse(macroregion == "MédioNorte" | macroregion == "Norte" | 
-                            macroregion == "Noroeste" | macroregion == "Oeste", "BRA.MT.01",
-                              ifelse(macroregion == "Nordeste", "BRA.MT.02",
-                                     ifelse(macroregion == "CentroSul", "BRA.MT.04",
-                                            ifelse(macroregion == "Sudeste", "BRA.MT.03",
-                                                   ifelse(macroregion == "Sudoeste", "BRA.MT.05", NA)))))) %>%
+                          macroregion == "Noroeste" | macroregion == "Oeste", "BRA.MT.01",
+                   ifelse(macroregion == "Nordeste", "BRA.MT.02",
+                   ifelse(macroregion == "CentroSul", "BRA.MT.04",
+                   ifelse(macroregion == "Sudeste", "BRA.MT.03",
+                   ifelse(macroregion == "Sudoeste", "BRA.MT.05", NA)))))) %>%
   mutate(val = as.numeric(val), 
          val = val*100,
          date = as.Date(date),
@@ -50,8 +51,10 @@ semeadura_mt_w %>%
   #filter(season == "12/13") %>%
   ggplot(aes(doy, val)) + 
   geom_line(aes(colour = season)) +
-  xlab("Day fo Year") + ylab("Sowing progress (%)") +
-  facet_wrap(~macroregion) + ggtitle("Soy sowing pace in Mato Grosso (2008/09 - 2019/20")
+  xlab("Day fo Year") + 
+  ylab("Sowing progress (%)") +
+  facet_wrap(~macroregion) + 
+  ggtitle("Soy sowing pace in Mato Grosso (2008/09 - 2019/20")
 
 # How do we model this? Logistic regression!
 # We use the minpack.lm package to fit non-0linear regressions to a 
@@ -85,8 +88,8 @@ model_sem2 <- semeadura_mt_w %>%
 #Plot model results for last 
 augment(model_sem2, model) %>%
   filter(crop == "soy") %>%
-  #filter(season == "18/19" | season == "19/20" | season == "20/21") %>%
-  filter(season == "12/13") %>%
+  filter(season == "18/19" | season == "19/20" | season == "20/21") %>%
+  #filter(season == "12/13") %>%
   ggplot(aes(doy_c, val)) +
   geom_point(aes(colour = season), shape = 1) + 
   geom_line(aes(doy_c, .fitted, colour = season)) + 
@@ -112,10 +115,10 @@ model_sem2 %>%
   geom_point(size = 1.1) +
   geom_crossbar(aes(ymin = estimate_corn_xmid - 2*std.error_corn_xmid, 
                       ymax = estimate_corn_xmid + 2*std.error_corn_xmid, 
-                      colour = season), shape = 21) +
+                      colour = season)) +
   geom_crossbar(aes(xmin = estimate_soy_xmid - 2*std.error_soy_xmid, 
                       xmax = estimate_soy_xmid + 2*std.error_soy_xmid, 
-                      colour = season), shape = 21) +
+                      colour = season)) +
   xlab("Days to reach 50% soy sowings") + ylab("Days to reach 50% corn sowings") +
   facet_wrap(~macroregion) + 
   theme_bw() +
@@ -132,21 +135,25 @@ findInt <- function(model, value) {
   }
 }
 
-#Define days to test
-prct_sowing <- 75
+#Define days to test at 25% and 75 completion
+prct_sowing_25 <- 25
+prct_sowing_75 <- 75
 
 #now calculate for each crop x macroregion x year combo
 model_sem3 <- left_join(model_sem_nest, model_sem2) %>%
   group_by(crop, macroregion, season) %>%
   mutate(
-    root_75 = map2(data, model, ~uniroot(findInt(.y, prct_sowing), range(.x$doy_c))$root)
+    root_25 = map2(data, model, ~uniroot(findInt(.y, prct_sowing_25), range(.x$doy_c))$root),
+    root_75 = map2(data, model, ~uniroot(findInt(.y, prct_sowing_75), range(.x$doy_c))$root)
   )
 
-unnest(model_sem3, root_75) 
+#take a look
+model_sem3 %>%
+unnest(c(root_25, root_75)) 
 
 model_sem_roots <- model_sem3 %>% 
-  unnest(root_75) %>%
-  select(crop, season, geounit, macroregion, root_75)
+  unnest(c(root_25, root_75)) %>%
+  select(crop, season, geounit, macroregion, root_25, root_75)
 
 #Now try plot again, but this time with the 75% completion for each one
 model_sem_4 <- model_sem2 %>%
@@ -155,7 +162,7 @@ model_sem_4 <- model_sem2 %>%
   select(crop:std.error) %>% 
   left_join(model_sem_roots) %>%
   pivot_wider(names_from = c(crop,term), 
-              values_from = c(estimate, std.error, root_75)) 
+              values_from = c(estimate, std.error, root_25, root_75)) 
   
 #now plot
   model_sem_4 %>%
@@ -165,6 +172,32 @@ model_sem_4 <- model_sem2 %>%
 # Now do a quick regression just to get an idea. Best here is to do a regression 
 # with errors in variables (e.g. Deming), and normalize/center vars
 
+#First, wrangle daily weather variables  
+#This first code creates summary rainfall and no. of days with rain for the last week fo december through Feb
+bra_daily_mt2 <- bra_daily_mt %>%
+    filter(vmnth == "Jan" | vmnth == "Dec" | vmnth == "Feb") %>%
+    filter(vdoy > 354 | vdoy < 55) %>%
+    mutate(vyear = ifelse(vmnth == "Dec", vyear + 1, vyear),
+           raind = ifelse(prcp > 2, 1, 0)) %>% # create a rule for how many days it rains
+    group_by(geounit, vyear) %>%
+    summarise(.groups = "keep",
+              sum_prcp = sum(prcp),
+              sum_rday = sum(raind)) %>%
+    rename(year = vyear)
+
+#now create vars more relvant for the first 25%
+bra_daily_mt3 <- bra_daily_mt %>%
+  filter(vmnth == "Jan" | vmnth == "Dec") %>%
+  filter(vdoy > 354 | vdoy < 55) %>%
+  mutate(vyear = ifelse(vmnth == "Dec", vyear + 1, vyear),
+         raind = ifelse(prcp > 2, 1, 0)) %>% # create a rule for how many days it rains
+  group_by(geounit, vyear) %>%
+  summarise(.groups = "keep",
+            sum_prcp25 = sum(prcp),
+            sum_rday25 = sum(raind)) %>%
+  rename(year = vyear)
+
+  
 #Filter to take out the whole state as a test
 model_sem_4b <-  model_sem_4 %>% 
   left_join(distinct(semeadura_mt_w, season, macroregion, geounit, year)) %>%
@@ -172,16 +205,18 @@ model_sem_4b <-  model_sem_4 %>%
   #filter(!season == "20/21") %>%
   filter(year  == max(year)) %>%
   left_join(bra_month_mt) %>%
-  left_join(bra_daily_mt) %>%
+  left_join(bra_daily_mt2) %>%
+  left_join(bra_daily_mt3) %>%
+  left_join(bra_soilm_mt) %>%
   group_by(macroregion, season, geounit) %>%
   mutate(prcp_decjan = (prcp_dec + prcp_jan), 
-         prcp_jan2 = prcp_jan^2)
+         prcp_jan2 = prcp_jan^2,
+         nordeste = ifelse(macroregion == 'Nordeste', 'nordeste', 'other'))
 
-# look at some diagnostic plots
+# Look at some diagnostic plots
 model_sem_4b %>%
-  ggplot(aes(prcp_jan2, estimate_corn_xmid)) + 
+  ggplot(aes(estimate_soy_xmid, estimate_corn_xmid)) + 
   geom_point(aes(colour = year)) + facet_wrap(~macroregion)
-
 
 #simple linear model with additive soy pace var and macroregion fixed effects
 model_lm_75 <- lm(estimate_corn_xmid ~ macroregion + estimate_soy_xmid, data = model_sem_4b)
@@ -210,6 +245,25 @@ model_lm_75_w2c <- lm(estimate_corn_xmid ~ sum_prcp + macroregion +  estimate_so
 #simple linear model with additive soy pace var, jan rains, year/trend and macroregion fixed effects
 model_lm_75_w2d <- lm(estimate_corn_xmid ~ macroregion + I(prcp_jan^2) + estimate_soy_xmid, data = model_sem_4b)
 
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w6 <- lm(estimate_corn_xmid ~ macroregion + soilm_jan + estimate_soy_xmid, data = model_sem_4b)
+
+#simple linear model with additive soy pace var, jan rains and macroregion fixed effects
+model_lm_75_w7 <- lm(estimate_corn_xmid ~ nordeste + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
+gas1 <- plsr(estimate_corn_xmid ~ estimate_soy_xmid, ncomp = 1, data = model_sem_4b, validation = "LOO")
+
+gas2 <- plsr(estimate_corn_xmid ~ nordeste + prcp_jan + estimate_soy_xmid, ncomp = 3, data = model_sem_4b, validation = "LOO")
+
+model_sem_4c <- 
+  model_sem_4b %>% select(-soilm_dec)
+
+gas3 <- plsr(estimate_corn_xmid ~ . , ncomp = 20, data = model_sem_4c, validation = "CV")
+
+RMSEP(gas3)
+gas2pred <- bind_cols(model_sem_4c, as.data.frame(predict(gas3,  newdata = model_sem_4c)))
+
+plot(RMSEP(gas3), legendpos = "topright")
 
 #take a look: Not terrible, but will certainly be improve by adding weather variables
 #from December-Feb, especially rainfall and temperature (in that order).
@@ -228,11 +282,15 @@ augment(model_lm_75_w2, newdata = model_sem_4b) %>%
   facet_wrap(~macroregion) + theme_bw()
 
 #Plot regression results with approx. 95% conf interval
-augment(model_lm_75_w, newdata = model_sem_4b) %>%
+augment(model_lm_75_w7, newdata = model_sem_4c) %>%
+  left_join(gas2pred) %>%
   distinct() %>%
   ggplot(aes(year, estimate_corn_xmid)) + 
   geom_point() +
   geom_line(aes(year, .fitted)) +
+  geom_line(aes(year,  `estimate_corn_xmid.8 comps`), colour = 'green') +
+  geom_line(aes(year,  `estimate_corn_xmid.17 comps`), colour = 'red') +
+  # geom_line(aes(year,  `estimate_corn_xmid.3 comps`), colour = 'blue') +
   geom_ribbon(aes(ymin = .fitted - 2*.se.fit, 
                   ymax = .fitted + 2*.se.fit), 
               linetype = 2, alpha = 0.5) +

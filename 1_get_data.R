@@ -20,20 +20,20 @@ bra_month_mt <- read_csv("bra_month.csv") %>%
   filter(grepl("MT", geounit)) %>%
   select(geounit, prev_year, year, contains("dec"), contains("jan") , contains("feb"))
 
+#bring in monthly soil moisture data
+bra_soilm_mt <- read_csv("bra_soilm.csv") %>%
+  filter(grepl("MT", geounit)) %>%
+  mutate(year = year(fdate), 
+         month = month(fdate, label = TRUE)) %>%
+  select(-vdate, -fdate) %>%
+  pivot_wider(names_from = month, values_from = soilm) %>%
+  filter(year > 2006) %>%
+  select(geounit, year, soilm_dec = Dec, soilm_jan = Jan, soilm_feb = Feb)
+
 #Bring in daily weather data for MT
-bra_daily_mt <- read_csv("bra_daily_mt.csv") %>%
-  filter(vmnth == "Jan" | vmnth == "Dec" | vmnth == "Feb") %>%
-  filter(vdoy > 354 | vdoy < 55) %>%
-  mutate(vyear = ifelse(vmnth == "Dec", vyear + 1, vyear),
-         raind = ifelse(prcp > 0.5, 1, 0)) %>% # create a rule for how many days it rains
-  group_by(geounit, vyear) %>%
-  summarise(.groups = "keep",
-    sum_prcp = sum(prcp),
-    sum_rday = sum(raind)) %>%
-  rename(year = vyear)
+bra_daily_mt <- read_csv("bra_daily_mt.csv") 
 
 #Bring in ayp, weather, sat imagery data
-
 bra_go_latest_all_mt <- read_csv("bra_yield_latest_all_go_2020_11.csv") %>%
   filter(grepl("MT", geounit)) %>% #keep only Mato Grosso
   filter(year > 2006) %>% #keep relevant years
