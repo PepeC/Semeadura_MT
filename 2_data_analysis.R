@@ -288,7 +288,7 @@ augment(model_lm_75_w7, newdata = model_sem_4c) %>%
   ggplot(aes(year, estimate_corn_xmid)) + 
   geom_point() +
   geom_line(aes(year, .fitted)) +
-  geom_line(aes(year,  `estimate_corn_xmid.8 comps`), colour = 'green') +
+  geom_line(aes(year,  `estimate_corn_xmid.9 comps`), colour = 'green') +
   geom_line(aes(year,  `estimate_corn_xmid.17 comps`), colour = 'red') +
   # geom_line(aes(year,  `estimate_corn_xmid.3 comps`), colour = 'blue') +
   geom_ribbon(aes(ymin = .fitted - 2*.se.fit, 
