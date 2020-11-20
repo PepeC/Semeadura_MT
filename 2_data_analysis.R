@@ -14,11 +14,11 @@ semeadura_mt_w <- semeadura_mt %>%
   pivot_longer(c(`CentroSul`:`Mato Grosso`), names_to = "macroregion", values_to = "val") %>%
   #create geounit names to match weather
   mutate(geounit = ifelse(macroregion == "MédioNorte" | macroregion == "Norte" | 
-                          macroregion == "Noroeste" | macroregion == "Oeste", "BRA.MT.01",
+                          macroregion == "Noroeste", "BRA.MT.01",
                    ifelse(macroregion == "Nordeste", "BRA.MT.02",
                    ifelse(macroregion == "CentroSul", "BRA.MT.04",
                    ifelse(macroregion == "Sudeste", "BRA.MT.03",
-                   ifelse(macroregion == "Sudoeste", "BRA.MT.05", NA)))))) %>%
+                   ifelse(macroregion == "Oeste", "BRA.MT.05", NA)))))) %>%
   mutate(val = as.numeric(val), 
          val = val*100,
          date = as.Date(date),
