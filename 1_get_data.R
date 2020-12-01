@@ -15,6 +15,10 @@ library(broom)
 semeadura_mt <- read_csv("./S204_Semeadura_v4.csv") %>%
   filter(!is.na(crop))
 
+#Import harvest dates
+colheita_mt <- read_csv("./S204_colheita_v2.csv") %>%
+  filter(!is.na(crop))
+
 #Bring in monthly weather data for MT
 bra_month_mt <- read_csv("bra_month.csv") %>%
   filter(grepl("MT", geounit)) %>%

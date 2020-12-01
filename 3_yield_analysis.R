@@ -5,7 +5,7 @@ library(elasticnet)
 bra_go_latest_all_mt2 <- bra_go_latest_all_mt %>%
   select(-harvested, -state, -crop, -contains("wheat"), -contains("soy")) %>%
   left_join(
-    select(ungroup(model_sem_4b), geounit, macroregion, year, contains("xmid"), 
+    select(ungroup(model_sem_4b), geounit, macroregion, nordeste, year, contains("xmid"), 
             contains("25"), -contains("std"), -contains("root")) 
   ) %>%
   #select(-season) %>%
@@ -14,7 +14,7 @@ bra_go_latest_all_mt2 <- bra_go_latest_all_mt %>%
 bra_go_latest_all_mt2_t <- bra_go_latest_all_mt %>%
   select(-harvested, -state, -crop, -contains("wheat"), -contains("soy")) %>%
   left_join(
-    select(model_sem_4b, geounit, macroregion, year, season, contains("xmid"), 
+    select(model_sem_4b, geounit, macroregion, nordeste, year, season, contains("xmid"), 
            contains("25"), -contains("std"), -contains("root"))
   ) %>%
   select(-season)%>%
@@ -35,17 +35,16 @@ m <- train(aa,
            tuneLength = 40,
            na.action = na.omit,
            returnData = TRUE,
-           preProcess = (c('knnImpute','zv','nzv','center','scale')),
-           trControl = trainControl(method = "repeatedcv",number = 5,repeats = 5))
+           preProcess = c('knnImpute', 'zv', 'nzv', 'center', 'scale'),
+           trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
 
 m2 <- train(aa,
            data = bra_go_latest_all_mt2_t,
            method = "lasso",
            tuneLength = 40,
            na.action = na.omit,
-           preProcess = (c('knnImpute','zv','nzv','center','scale')),
-           trControl = trainControl(method = "repeatedcv",number = 5,repeats = 5))
-
+           preProcess = c('knnImpute', 'zv', 'nzv', 'center', 'scale'),
+           trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
 
 m3 <- train(aa,
             data = bra_go_latest_all_mt2_t,
@@ -56,22 +55,49 @@ m3 <- train(aa,
             trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
 
 #for an LM, try a spec formula
-m4 <- train(yield ~ geounit *(prcp_jan + estimate_corn_xmid +  precip_febmar) + 
-              geounit*ndv_mar + tmax_apr,
+set.seed(131313)
+m4 <- train(yield ~ year + estimate_corn_xmid*precip_febmar + nordeste:(precip_febmar ) + 
+              geounit*(ndv_mar + sum_edd_apr) + srad_mar + sum_edd_apr:estimate_corn_xmid,
             data = bra_go_latest_all_mt2_t,
             method = 'lm',
             #tuneLength = 40,
             na.action = na.omit,
             preProcess = (c('knnImpute','zv','nzv','center','scale')),
-            trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
+            trControl = trainControl(method = "repeatedcv", number = 20, repeats = 5))
 m4 %>% summary()
 
-m4_lm <- lm(yield ~ geounit*prcp_jan + estimate_corn_xmid*prcp_jan + 
-  geounit*ndv_mar + tmax_apr, 
+m42 <- train(yield ~ year + estimate_corn_xmid + precip_janmar + 
+            (ndv_mar + sum_edd_apr) + srad_mar + sum_edd_apr,
+            data = bra_go_latest_all_mt2_t,
+            method = 'lm',
+            #tuneLength = 40,
+            na.action = na.omit,
+            preProcess = (c('knnImpute','zv','nzv','center','scale')),
+            trControl = trainControl(method = "repeatedcv", number = 20, repeats = 5))
+m42 %>% summary()
+
+m4_lm <- lm(yield ~ year + estimate_corn_xmid*precip_febmar + nordeste:(precip_febmar ) + 
+              geounit*(ndv_mar + sum_edd_apr) + srad_mar + sum_edd_apr:estimate_corn_xmid,
+            data = bra_go_latest_all_mt2_t)
+
+m4_lm2 <- lm(yield ~ year + estimate_corn_xmid + prcp_jan + nordeste*(precip_febmar) + 
+  nordeste*(ndv_mar + sum_edd_apr) + srad_mar, 
 data = bra_go_latest_all_mt2_t) 
 
+summary(m4_lm2)
+tidy(m4_lm2, conf.int = TRUE)
+
+AICc(m4_lm2)
+
+m4_lm3 <-lm(yield ~ year + estimate_corn_xmid + geounit*(precip_febmar ) + 
+            geounit*(ndv_mar + sum_edd_apr) + srad_mar, 
+            data = bra_go_latest_all_mt2_t)
+
+AICc(m4_lm3)
+tidy(m4_lm3, conf.int = TRUE)
+
 plot(m$results[,1:2])
-varImp(m)
+varImp(m4_lm2)
 
 pred_tib <- extractPrediction(m)
 
