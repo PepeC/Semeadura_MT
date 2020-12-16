@@ -4,6 +4,7 @@ library(tidyverse)
 library(minpack.lm)
 library(lubridate)
 library(AICcmodavg)
+library(beepr)
 
 #Run get data R code.
 source("1_get_data.R")
@@ -250,6 +251,41 @@ model_lm_75_w6 <- lm(estimate_corn_xmid ~ macroregion + soilm_jan + estimate_soy
 
 #simple linear model with additive soy pace var, jan rains and macroregion fixed effects
 model_lm_75_w7 <- lm(estimate_corn_xmid ~ nordeste + prcp_jan + estimate_soy_xmid, data = model_sem_4b)
+
+#try with lasso
+model_lm_75_lass0 <- glmnet(estimate_corn_xmid ~ macroregion + soilm_jan + estimate_soy_xmid, data = model_sem_4b)
+
+varr2 <- model_sem_4b %>%
+  select(-contains("corn_xmid"), -prev_year, -tmin_dec, -contains("std.error"), 
+         -ptavg_feb, -ptmin_jan) %>%
+  colnames()
+
+aa2 <- as.formula( paste("estimate_corn_xmid~ ", "(", paste( varr2, collapse = " + " ), ")^2"))
+
+set.seed(131313)
+
+m_yield <- train(aa2,
+           data = model_sem_4b,
+           method = "pls",
+           tuneLength = 40,
+           na.action = na.omit,
+           returnData = TRUE,
+           preProcess = c('knnImpute', 'zv', 'nzv', 'center', 'scale'),
+           trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5)) 
+
+summary(m_yield)
+
+m_yield2 <- train(aa2,
+            data = model_sem_4b,
+            method = "lasso",
+            tuneLength = 40,
+            na.action = na.omit,
+            preProcess = c('knnImpute', 'zv', 'nzv', 'center', 'scale'),
+            trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
+
+plot(m_yield$results[,1:2])
+varImp(m_yield)
+
 
 gas1 <- plsr(estimate_corn_xmid ~ estimate_soy_xmid, ncomp = 1, data = model_sem_4b, validation = "LOO")
 
